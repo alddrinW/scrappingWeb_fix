@@ -1,0 +1,45 @@
+services:
+  mongodb:
+    image: mongo:7.0
+    container_name: web-scraping-mongodb
+    restart: unless-stopped
+    ports:
+      - "${MONGODB_PORT:-27018}:27017"
+    volumes:
+      - mongodb_data:/data/db
+    environment:
+      - MONGO_INITDB_DATABASE=${MONGODB_DATABASE:-webScraping}
+    networks:
+      - web-scraping-network
+    command: mongod --noauth
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  frontend:
+    build:
+      context: "./WebScraping/Frontend"
+      dockerfile: Dockerfile
+      args:
+        - VITE_API_BASE_URL=${VITE_API_BASE_URL:-http://localhost:3001}
+        - VITE_VNC_URL=${VITE_VNC_URL:-http://localhost:6080}
+    container_name: web-scraping-frontend
+    restart: unless-stopped
+    ports:
+      - "0.0.0.0:${FRONTEND_PORT:-80}:80"
+    networks:
+      - web-scraping-network
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:80"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+volumes:
+  mongodb_data:
+
+networks:
+  web-scraping-network:
+    driver: bridge
