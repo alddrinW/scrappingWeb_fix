@@ -1,6 +1,13 @@
 #!/bin/bash
 # Archivo: start-vnc.sh
 
+# Instalar dependencias necesarias:
+sudo apt-get install -y xvfb x11vnc fluxbox websockify novnc
+
+sleep 3
+# Configurar la contraseña de VNC:
+
+
 # Limpia el entorno:
 
 pkill -9 Xvfb

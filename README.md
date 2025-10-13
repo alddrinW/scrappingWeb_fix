@@ -191,6 +191,7 @@ WantedBy=multi-user.target
 > - `/home/andre/` → `/home/TU_USUARIO/` (en todas las líneas)
 > - `WorkingDirectory` → Ruta donde clonaste el proyecto
 > - `cd /home/TU_USUARIO/noVNC` → Ruta donde clonaste noVNC
+> - `--listen [IP_DEL_SERVIDOR]:6080` → Ip del servidor / localhost (desarrollo)
 
 ```
 
