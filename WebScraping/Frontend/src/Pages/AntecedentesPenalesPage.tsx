@@ -29,7 +29,7 @@ export function AntecedentesPenalesPage() {
   const [showResult, setShowResult] = useState(false);
   const [vncWindow, setVncWindow] = useState<Window | null>(null);
   const [needsRetry, setNeedsRetry] = useState(false);
-  const [formData, setFormData] = useState<FormData | null>(null); // Guardar datos del formulario para reintento
+  const [formData, setFormData] = useState<FormData | null>(null);
 
   const {
     register,
@@ -38,7 +38,6 @@ export function AntecedentesPenalesPage() {
   } = useForm<FormData>();
 
   useEffect(() => {
-    // Cerrar noVNC si no está cargando y la ventana existe
     if (!isLoading && vncWindow && !vncWindow.closed) {
       vncWindow.close();
       setVncWindow(null);
@@ -52,9 +51,8 @@ export function AntecedentesPenalesPage() {
     setAntecedentesPenalesData(null);
     setError(null);
     setNeedsRetry(false);
-    setFormData(data); // Guardar datos del formulario
+    setFormData(data);
 
-    // Abrir noVNC desde las variables de entorno
     const vncUrl = import.meta.env.VITE_VNC_URL;
     const windowRef = window.open(`${vncUrl}/vnc.html`);
     if (windowRef) {
@@ -76,54 +74,56 @@ export function AntecedentesPenalesPage() {
         body: JSON.stringify({ cedula: data.cedula }),
       });
 
-      const resultado = await response.json();
+      const resultadoAntecedentes = await response.json();
 
-      // Si el CAPTCHA (Incapsula o hCaptcha) se resolvió, cerrar noVNC y reintentar
-      if (resultado.captchaResolved) {
+      if (resultadoAntecedentes.captchaResolved) {
         if (vncWindow && !vncWindow.closed) {
           vncWindow.close();
           setVncWindow(null);
         }
-        console.log('CAPTCHA resuelto, reintentando consulta automáticamente...');
-        setIsLoading(true); // Mantener el estado de carga
-        await new Promise(resolve => setTimeout(resolve, 1000)); // Breve espera para asegurar el cierre
-        return onSubmit(data); // Reintentar la consulta
+        console.log('CAPTCHA resuelto, reintentando consulta...');
+        setIsLoading(true);
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        return onSubmit(data);
       }
 
-      // Si se necesita resolver CAPTCHA manualmente
-      if (resultado.error === 'captcha_required' || resultado.error === 'incapsula_blocked') {
-        setError(resultado.message);
+      if (resultadoAntecedentes.error === 'captcha_required' || resultadoAntecedentes.error === 'incapsula_blocked') {
+        setError(resultadoAntecedentes.message);
         setNeedsRetry(true);
         setIsLoading(false);
         return;
       }
 
-      // Si la consulta fue exitosa
-      if (resultado.success !== false) {
-        const { cedula, nombre, resultado: resultadoText, tieneAntecedentes, fechaConsulta, estado } = resultado;
-        setAntecedentesPenalesData({
+      if (resultadoAntecedentes.success === true && resultadoAntecedentes.data) {
+        const { cedula, nombre, resultado, tieneAntecedentes, fechaConsulta, estado } = resultadoAntecedentes.data;
+        // Validar que los datos necesarios estén presentes
+        if (!cedula || !nombre || !resultado || tieneAntecedentes === undefined || !fechaConsulta || !estado) {
+          throw new Error('Datos incompletos recibidos del backend');
+        }
+        const dataToSet = {
           cedula,
           nombre,
-          resultado: resultadoText,
+          resultado,
           tieneAntecedentes,
           fechaConsulta,
           estado,
-        });
+        };
+        setAntecedentesPenalesData(dataToSet);
         setShowResult(true);
       } else {
-        setError(resultado.message || "Ocurrió un error al consultar antecedentes penales");
+        setError(resultadoAntecedentes.message || "Ocurrió un error al consultar antecedentes penales");
       }
-    } catch (error) {
-      console.error("Error al consultar antecedentes penales:", error);
-      setError("Ocurrió un error al consultar antecedentes penales");
-    } finally {      
-        setIsLoading(false); // Solo finalizar carga si no se está reintentando
+    } catch (error: any) {
+      console.error("Error en frontend:", error);
+      setError(error.message || "Ocurrió un error al consultar antecedentes penales");
+    } finally {
+      setIsLoading(false);
     }
   };
 
   const handleRetry = () => {
     if (formData) {
-      onSubmit(formData); // Reintentar con los datos guardados
+      onSubmit(formData);
     }
   };
 
@@ -196,14 +196,14 @@ export function AntecedentesPenalesPage() {
           </div>
           <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
             <div className="text-sm text-blue-800">
-              <strong>Información importante:</strong> Este certificado es válido únicamente para el momento de su consulta. 
-              Los antecedentes penales pueden cambiar en cualquier momento. Para trámites oficiales, 
+              <strong>Información importante:</strong> Este certificado es válido únicamente para el momento de su consulta.
+              Los antecedentes penales pueden cambiar en cualquier momento. Para trámites oficiales,
               se recomienda obtener un certificado oficial del Ministerio del Interior.
             </div>
           </div>
           <div className={`p-4 rounded-lg border ${
-            data.tieneAntecedentes 
-              ? 'bg-red-50 border-red-200' 
+            data.tieneAntecedentes
+              ? 'bg-red-50 border-red-200'
               : 'bg-green-50 border-green-200'
           }`}>
             <div className="text-sm font-medium text-gray-700 mb-2">Resultado de la consulta:</div>
@@ -238,7 +238,7 @@ export function AntecedentesPenalesPage() {
                 Consulta de Antecedentes Penales
               </CardTitle>
               <CardDescription>
-                Consulta los antecedentes penales de una persona mediante el número de cédula. 
+                Consulta los antecedentes penales de una persona mediante el número de cédula.
                 Esta información proviene del Ministerio del Interior del Ecuador.
               </CardDescription>
             </CardHeader>

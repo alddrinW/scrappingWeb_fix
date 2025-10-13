@@ -5,17 +5,15 @@ export const obtenerAntecedentesPenales = async (cedula) => {
   let browser = null;
 
   try {
-    console.log(`🔍 Iniciando consulta de antecedentes penales para cédula: ${cedula}`);
-
-    // Iniciar Playwright con evasión mejorada
+    console.log(`🔍 Iniciando consulta para cédula: ${cedula}`);
     browser = await chromium.launch({
-      headless: false, // Visible para noVNC
+      headless: false,
       executablePath: '/usr/bin/chromium-browser',
       args: [
         '--no-sandbox',
         '--disable-setuid-sandbox',
         '--display=:99',
-        '--disable-blink-features=AutomationControlled', // Oculta detección de automatización
+        '--disable-blink-features=AutomationControlled',
         '--disable-dev-shm-usage',
         '--disable-web-security',
         '--disable-features=VizDisplayCompositor',
@@ -40,49 +38,51 @@ export const obtenerAntecedentesPenales = async (cedula) => {
         'Upgrade-Insecure-Requests': '1',
       },
       permissions: ['geolocation'],
-      geolocation: { latitude: -0.1807, longitude: -78.4678 }, // Quito, Ecuador
+      geolocation: { latitude: -0.1807, longitude: -78.4678 },
     });
 
-    // Ocultar webdriver
     await context.addInitScript(() => {
       Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
     });
 
     const page = await context.newPage();
 
-    console.log(`🌐 Navegando a página de antecedentes penales...`);
     try {
       await page.goto('https://certificados.ministeriodelinterior.gob.ec/gestorcertificados/antecedentes/', {
-        waitUntil: 'domcontentloaded', // Menos estricto que networkidle
-        timeout: 90000, // Aumentado a 90 segundos
+        waitUntil: 'domcontentloaded',
+        timeout: 120000,
       });
+      await page.waitForLoadState('load', { timeout: 120000 }); // Asegurar que la página esté completamente cargada
     } catch (error) {
-      console.error('⚠️ Error en page.goto:', error.message);
-      const pageContent = await page.content();
+      console.error('⚠️ Error al cargar página:', error.message);
+      const pageContent = await page.content().catch(() => 'No se pudo obtener el contenido de la página');
       console.log('Contenido de la página:', pageContent.substring(0, 1000));
       throw new Error(`No se pudo cargar la página: ${error.message}`);
     }
 
     console.log(`📄 Página cargada. Título: ${await page.title()}`);
 
-    // Verificar bloqueo de Incapsula
+    // Verificar bloqueo de Incapsula con manejo seguro
     const isIncapsulaBlocked = await page.evaluate(() => {
+      if (!document.body) return false;
       return !!document.querySelector('#main-iframe') || document.body.innerHTML.includes('Incapsula');
+    }).catch(() => {
+      console.log('⚠️ Error al evaluar Incapsula, asumiendo no bloqueado');
+      return false;
     });
 
     if (isIncapsulaBlocked) {
-      console.log('⚠️ Bloqueo de Incapsula detectado. Esperando resolución manual...');
-      console.log('Abre noVNC para resolver el challenge de Incapsula (espera 10-30 segundos o interactúa).');
-
+      console.log('⚠️ Bloqueo de Incapsula detectado.');
       let attempts = 0;
-      const maxAttempts = 120; // 10 minutos
+      const maxAttempts = 120;
       while (attempts < maxAttempts) {
         const stillBlocked = await page.evaluate(() => {
+          if (!document.body) return false;
           return !!document.querySelector('#main-iframe') || document.body.innerHTML.includes('Incapsula');
-        });
+        }).catch(() => false);
         if (!stillBlocked) {
-          console.log('✅ Bloqueo de Incapsula resuelto, continuando...');
-          await page.waitForLoadState('domcontentloaded');
+          console.log('✅ Bloqueo de Incapsula resuelto.');
+          await page.waitForLoadState('domcontentloaded', { timeout: 30000 });
           break;
         }
         attempts++;
@@ -94,12 +94,11 @@ export const obtenerAntecedentesPenales = async (cedula) => {
         return {
           success: false,
           error: 'incapsula_blocked',
-          message: 'Se detectó un bloqueo de Incapsula. Resuélvelo mediante noVNC (espera o interactúa con la página).',
+          message: 'Se detectó un bloqueo de Incapsula. Resuélvelo mediante noVNC.',
         };
       }
     }
 
-    // Aceptar cookies
     try {
       await page.waitForSelector('.cc-btn.cc-dismiss', { timeout: 5000 });
       await page.click('.cc-btn.cc-dismiss');
@@ -108,23 +107,25 @@ export const obtenerAntecedentesPenales = async (cedula) => {
       console.log(`ℹ️ No se encontró banner de cookies`);
     }
 
-    // Verificar hCaptcha
     const isHCaptchaPresent = await page.evaluate(() => {
+      if (!document.body) return false;
       return !!document.querySelector('div.h-captcha') || document.body.innerHTML.includes('hcaptcha');
+    }).catch(() => {
+      console.log('⚠️ Error al evaluar hCaptcha, asumiendo no presente');
+      return false;
     });
 
     if (isHCaptchaPresent) {
-      console.log('⚠️ hCaptcha detectado. Esperando resolución manual...');
-      console.log('Abre noVNC para resolver el hCaptcha.');
-
+      console.log('⚠️ hCaptcha detectado.');
       let attempts = 0;
-      const maxAttempts = 60; // 5 minutos
+      const maxAttempts = 60;
       while (attempts < maxAttempts) {
         const captchaStillPresent = await page.evaluate(() => {
+          if (!document.body) return false;
           return !!document.querySelector('div.h-captcha') || document.body.innerHTML.includes('hcaptcha');
-        });
+        }).catch(() => false);
         if (!captchaStillPresent) {
-          console.log('✅ hCaptcha resuelto, continuando...');
+          console.log('✅ hCaptcha resuelto.');
           break;
         }
         attempts++;
@@ -141,8 +142,7 @@ export const obtenerAntecedentesPenales = async (cedula) => {
       }
     }
 
-    // Aceptar términos y condiciones
-    console.log(`✅ Intentando aceptar términos y condiciones...`);
+    console.log(`✅ Intentando aceptar términos...`);
     try {
       await page.waitForSelector('button.ui-button-text-only:has-text("Aceptar")', { timeout: 15000 });
       await page.click('button.ui-button-text-only:has-text("Aceptar")');
@@ -153,62 +153,82 @@ export const obtenerAntecedentesPenales = async (cedula) => {
         await page.click('button:has-text("Aceptar")');
         console.log(`✅ Términos aceptados con selector alternativo`);
       } catch (e2) {
-        console.log('⚠️ No se encontró el botón de aceptar términos. Inspeccionando...');
-        const pageContent = await page.content();
+        console.log('⚠️ No se encontró botón de aceptar términos.');
+        const pageContent = await page.content().catch(() => 'No se pudo obtener el contenido');
         console.log('Contenido de la página:', pageContent.substring(0, 1000));
-        throw new Error('No se encontró el botón de aceptar términos. Verifica el sitio en noVNC.');
+        throw new Error('No se encontró el botón de aceptar términos.');
       }
     }
 
-    // Llenar cédula
     console.log(`📝 Llenando cédula: ${cedula}`);
-    await page.waitForSelector('#txtCi', { timeout: 30000 });
-    await page.fill('#txtCi', cedula);
-    await page.click('#btnSig1');
+    try {
+      await page.waitForSelector('#txtCi', { timeout: 30000 });
+      await page.fill('#txtCi', cedula);
+      await page.click('#btnSig1');
+    } catch (error) {
+      console.error('⚠️ Error al llenar cédula:', error.message);
+      const pageContent = await page.content().catch(() => 'No se pudo obtener el contenido');
+      console.log('Contenido de la página:', pageContent.substring(0, 1000));
+      throw new Error('No se pudo llenar la cédula.');
+    }
 
-    // Llenar motivo
-    console.log(`📋 Llenando motivo de consulta...`);
-    await page.waitForSelector('#txtMotivo', { timeout: 90000 });
-    await page.fill('#txtMotivo', 'Consulta Personal');
-    await page.waitForSelector('#btnSig2', { timeout: 90000 });
-    await page.click('#btnSig2');
+    console.log(`📋 Llenando motivo...`);
+    try {
+      await page.waitForSelector('#txtMotivo', { timeout: 30000 });
+      await page.fill('#txtMotivo', 'Consulta Personal');
+      await page.waitForSelector('#btnSig2', { timeout: 30000 });
+      await page.click('#btnSig2');
+    } catch (error) {
+      console.error('⚠️ Error al llenar motivo:', error.message);
+      const pageContent = await page.content().catch(() => 'No se pudo obtener el contenido');
+      console.log('Contenido de la página:', pageContent.substring(0, 1000));
+      throw new Error('No se pudo llenar el motivo.');
+    }
 
-    // Obtener resultados
-    await page.waitForSelector('#dvAntecedent1', { timeout: 30000 });
-    const resultado = await page.textContent('#dvAntecedent1');
-    const nombre = await page.textContent('#dvName1');
+    console.log(`📊 Obteniendo resultados...`);
+    try {
+      await page.waitForSelector('#dvAntecedent1', { timeout: 30000 });
+      const resultado = await page.textContent('#dvAntecedent1');
+      const nombre = await page.textContent('#dvName1');
 
-    const resultadoFormateado = resultado.trim().toUpperCase() === 'NO'
-      ? 'No tiene antecedentes penales'
-      : 'Tiene antecedentes penales';
+      if (!resultado || !nombre) {
+        const pageContent = await page.content().catch(() => 'No se pudo obtener el contenido');
+        console.log('Contenido de la página:', pageContent.substring(0, 1000));
+        throw new Error('No se encontraron los datos esperados (resultado o nombre).');
+      }
 
-    const tieneAntecedentes = resultado.trim().toUpperCase() !== 'NO';
+      const resultadoFormateado = resultado.trim().toUpperCase() === 'NO'
+        ? 'No tiene antecedentes penales'
+        : 'Tiene antecedentes penales';
 
-    const datosAntecedentes = {
-      cedula,
-      nombre: nombre.trim(),
-      resultado: resultadoFormateado,
-      tieneAntecedentes,
-      fechaConsulta: new Date(),
-      estado: 'exitoso',
-    };
+      const tieneAntecedentes = resultado.trim().toUpperCase() !== 'NO';
 
-    console.log(`✅ Consulta completada para ${nombre.trim()}: ${resultadoFormateado}`);
+      const datosAntecedentes = {
+        cedula,
+        nombre: nombre.trim(),
+        resultado: resultadoFormateado,
+        tieneAntecedentes,
+        fechaConsulta: new Date().toISOString(),
+        estado: 'exitoso',
+        success: true,
+      };
 
-    // Guardar en base de datos
-    await DatabaseOperations.upsert(
-      Collections.ANTECEDENTES_PENALES,
-      { cedula },
-      datosAntecedentes
-    );
+      console.log(`✅ Consulta completada: ${JSON.stringify(datosAntecedentes)}`);
 
-    console.log(`💾 Datos guardados en base de datos para la cédula ${cedula}`);
+      await DatabaseOperations.upsert(
+        Collections.ANTECEDENTES_PENALES,
+        { cedula },
+        datosAntecedentes
+      );
 
-    await browser.close();
-    return datosAntecedentes;
-
+      await browser.close();
+      return datosAntecedentes;
+    } catch (error) {
+      console.error('⚠️ Error al obtener resultados:', error.message);
+      throw error;
+    }
   } catch (error) {
-    console.error("\n❌ Error en obtenerAntecedentesPenales:", error.message);
+    console.error("\n❌ Error general:", error.message);
 
     await ErrorLogsModel.saveError(
       'antecedentes-penales',
