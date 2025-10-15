@@ -8,7 +8,7 @@ Proyecto que realiza Web scrapping de páginas como la Senecyt, SUPA, Sercop, et
 - npm
 - MongoDB
 - Docker y Docker Compose
-- xvfb, x11vnc, fluxbox (para VNC)
+- xvfb, x11vnc, fluxbox, chromium (para VNC)
 - wget, gi## 📋 Scrapers Disponibles
 
 ### Scrapers Automáticos (sin intervención manual)
